@@ -1,28 +1,55 @@
 import { useState } from "react";
-import { Edit, Clipboard, Sliders, ArrowLeft, Folder } from "../components/Icons";
+import { Edit, Clipboard, Sliders, ArrowLeft, Trash, Close } from "../components/Icons";
 import "./EssayScoringPage.css";
 
 export default function EssayScoringPage() {
-  const [studentAnswer, setStudentAnswer] = useState("");
+  const [question, setQuestion] = useState("");
   const [referenceAnswer, setReferenceAnswer] = useState("");
+  const [studentAnswers, setStudentAnswers] = useState([""]); // Array of student responses
   const [isScoring, setIsScoring] = useState(false);
-  const [scoreResult, setScoreResult] = useState(null);
+  const [scoreResults, setScoreResults] = useState(null); // Will store list of result objects
+  const [expandedIndex, setExpandedIndex] = useState(null); // Track expanded accordion card
   const [error, setError] = useState(null);
+
+  // Add a new empty student answer input field
+  const handleAddAnswer = () => {
+    setStudentAnswers([...studentAnswers, ""]);
+  };
+
+  // Remove a specific student answer input field
+  const handleRemoveAnswer = (indexToRemove) => {
+    if (studentAnswers.length <= 1) return;
+    const updated = studentAnswers.filter((_, idx) => idx !== indexToRemove);
+    setStudentAnswers(updated);
+  };
+
+  // Update text of a specific student answer
+  const handleAnswerChange = (index, value) => {
+    const updated = [...studentAnswers];
+    updated[index] = value;
+    setStudentAnswers(updated);
+  };
 
   const handleScoreEssay = async (e) => {
     e.preventDefault();
-    if (!referenceAnswer.strip ? !referenceAnswer.trim() : !referenceAnswer.trim()) {
+    
+    // Validations
+    if (!referenceAnswer.trim()) {
       setError("Kunci jawaban tidak boleh kosong.");
       return;
     }
-    if (!studentAnswer.strip ? !studentAnswer.trim() : !studentAnswer.trim()) {
-      setError("Jawaban siswa tidak boleh kosong.");
+    
+    // Check if any student answer is empty
+    const hasEmpty = studentAnswers.some((ans) => !ans.trim());
+    if (hasEmpty) {
+      setError("Semua kolom jawaban siswa harus diisi.");
       return;
     }
 
     setIsScoring(true);
     setError(null);
-    setScoreResult(null);
+    setScoreResults(null);
+    setExpandedIndex(null);
 
     try {
       const response = await fetch("http://localhost:8000/api/score-essay", {
@@ -31,8 +58,9 @@ export default function EssayScoringPage() {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          student_answer: studentAnswer,
+          question: question,
           reference_answer: referenceAnswer,
+          student_answers: studentAnswers,
         }),
       });
 
@@ -42,7 +70,11 @@ export default function EssayScoringPage() {
       }
 
       const data = await response.json();
-      setScoreResult(data);
+      setScoreResults(data.results);
+      // Auto-expand the first result card
+      if (data.results && data.results.length > 0) {
+        setExpandedIndex(0);
+      }
     } catch (err) {
       setError(err.message || "Gagal menghubungkan ke server.");
     } finally {
@@ -51,21 +83,26 @@ export default function EssayScoringPage() {
   };
 
   const handleReset = () => {
-    setStudentAnswer("");
+    setQuestion("");
     setReferenceAnswer("");
-    setScoreResult(null);
+    setStudentAnswers([""]);
+    setScoreResults(null);
+    setExpandedIndex(null);
     setError(null);
   };
 
-  const getGradeInfo = (score) => {
-    if (score >= 85) return { grade: "A", color: "var(--success)", text: "Sangat Baik! Jawaban sangat akurat dan mencakup semua materi utama." };
-    if (score >= 70) return { grade: "B", color: "var(--info)", text: "Baik! Jawaban sudah cukup akurat dan terstruktur dengan benar." };
-    if (score >= 55) return { grade: "C", color: "var(--warning)", text: "Cukup! Terdapat beberapa materi penting yang terlewatkan atau kurang lengkap." };
-    if (score >= 40) return { grade: "D", color: "var(--primary-dark)", text: "Kurang! Jawaban kurang mendalam dan memiliki kecocokan yang rendah." };
-    return { grade: "E", color: "var(--danger)", text: "Sangat Kurang! Jawaban tidak sesuai dengan kunci jawaban atau terlalu sedikit." };
+  // Helper to determine the score color theme (without grade letters/predicates)
+  const getScoreColor = (score) => {
+    if (score >= 85) return "var(--success)";
+    if (score >= 70) return "var(--info)";
+    if (score >= 55) return "var(--warning)";
+    return "var(--danger)";
   };
 
-  const gradeInfo = scoreResult ? getGradeInfo(scoreResult.score) : null;
+  const shortPreview = (text, maxLength = 60) => {
+    if (!text) return "";
+    return text.length > maxLength ? text.slice(0, maxLength) + "..." : text;
+  };
 
   return (
     <div className="essay-scoring-page">
@@ -76,7 +113,7 @@ export default function EssayScoringPage() {
           <span>Penilaian Esai Otomatis (Essay Scoring)</span>
         </h2>
         <p className="scoring-subtitle">
-          Bandingkan jawaban siswa secara semantik dan leksikal dengan kunci jawaban untuk penilaian cepat.
+          Bandingkan satu atau beberapa jawaban siswa secara semantik dan leksikal dengan kunci jawaban.
         </p>
       </div>
 
@@ -87,11 +124,28 @@ export default function EssayScoringPage() {
         </div>
       )}
 
-      {!scoreResult ? (
+      {!scoreResults ? (
         <form className="scoring-form" onSubmit={handleScoreEssay}>
-          <div className="input-columns">
+          {/* Question / Prompt card (Full width) */}
+          <div className="input-card question-card">
+            <label className="input-label">
+              <Clipboard size={16} style={{ color: "var(--primary)" }} />
+              <span>Soal / Pertanyaan (Pertanyaan Esai - Opsional)</span>
+            </label>
+            <textarea
+              className="scoring-textarea question-textarea"
+              placeholder="Masukkan teks soal atau petunjuk esai di sini sebagai konteks..."
+              value={question}
+              onChange={(e) => setQuestion(e.target.value)}
+              maxLength={2000}
+              disabled={isScoring}
+              style={{ minHeight: "80px" }}
+            />
+          </div>
+
+          <div className="input-columns-layout">
             {/* Left Column: Reference Answer */}
-            <div className="input-card">
+            <div className="input-card reference-card">
               <label className="input-label">
                 <Clipboard size={16} style={{ color: "var(--primary)" }} />
                 <span>Kunci Jawaban / Referensi (Reference Answer)</span>
@@ -103,143 +157,229 @@ export default function EssayScoringPage() {
                 onChange={(e) => setReferenceAnswer(e.target.value)}
                 maxLength={5000}
                 disabled={isScoring}
+                style={{ minHeight: "320px" }}
               />
               <div className="char-counter">
                 {referenceAnswer.length} / 5000 karakter
               </div>
             </div>
 
-            {/* Right Column: Student Answer */}
-            <div className="input-card">
-              <label className="input-label">
-                <Edit size={16} style={{ color: "var(--primary)" }} />
-                <span>Jawaban Siswa (Student's Response)</span>
-              </label>
-              <textarea
-                className="scoring-textarea"
-                placeholder="Masukkan jawaban esai yang ditulis siswa untuk dinilai di sini..."
-                value={studentAnswer}
-                onChange={(e) => setStudentAnswer(e.target.value)}
-                maxLength={5000}
-                disabled={isScoring}
-              />
-              <div className="char-counter">
-                {studentAnswer.length} / 5000 karakter
+            {/* Right Column: Multiple Student Answers */}
+            <div className="answers-stack-container">
+              <div className="answers-stack-header">
+                <label className="input-label">
+                  <Edit size={16} style={{ color: "var(--primary)" }} />
+                  <span>Daftar Jawaban Siswa</span>
+                </label>
+                <span className="answers-count-badge">
+                  {studentAnswers.length} Jawaban
+                </span>
               </div>
+
+              <div className="answers-scroll-area">
+                {studentAnswers.map((answer, index) => (
+                  <div key={index} className="input-card student-answer-card">
+                    <div className="student-card-header">
+                      <span className="student-label-text">Jawaban Siswa #{index + 1}</span>
+                      {studentAnswers.length > 1 && (
+                        <button
+                          type="button"
+                          className="btn-remove-answer"
+                          onClick={() => handleRemoveAnswer(index)}
+                          title="Hapus jawaban ini"
+                          disabled={isScoring}
+                        >
+                          <Trash size={14} />
+                        </button>
+                      )}
+                    </div>
+                    <textarea
+                      className="scoring-textarea student-textarea"
+                      placeholder={`Masukkan teks jawaban dari siswa #${index + 1} di sini...`}
+                      value={answer}
+                      onChange={(e) => handleAnswerChange(index, e.target.value)}
+                      maxLength={5000}
+                      disabled={isScoring}
+                      style={{ minHeight: "130px" }}
+                    />
+                    <div className="char-counter">
+                      {answer.length} / 5000 karakter
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <button
+                type="button"
+                className="btn-add-answer-field"
+                onClick={handleAddAnswer}
+                disabled={isScoring}
+              >
+                <span>+</span> Tambah Jawaban Siswa Lain
+              </button>
             </div>
           </div>
 
           <button
             type="submit"
             className={`btn-score ${isScoring ? "loading" : ""}`}
-            disabled={isScoring || !referenceAnswer.trim() || !studentAnswer.trim()}
+            disabled={isScoring || !referenceAnswer.trim() || studentAnswers.some((ans) => !ans.trim())}
           >
             {isScoring ? (
               <>
                 <div className="spinner" />
-                <span>Sedang Menganalisis Jawaban...</span>
+                <span>Sedang Menilai Jawaban ({studentAnswers.length} esai)...</span>
               </>
             ) : (
               <>
                 <Sliders size={20} />
-                <span>Mulai Penilaian Esai</span>
+                <span>Mulai Penilaian ({studentAnswers.length} esai)</span>
               </>
             )}
           </button>
         </form>
       ) : (
-        <div className="scoring-result-container">
-          <div className="result-main-card">
-            {/* Left Result Side: Score Gauge */}
-            <div className="score-gauge-side">
-              <div className="gauge-outer">
-                <svg className="gauge-svg" viewBox="0 0 100 100">
-                  <circle
-                    className="gauge-bg-circle"
-                    cx="50"
-                    cy="50"
-                    r="40"
-                  />
-                  <circle
-                    className="gauge-fill-circle"
-                    cx="50"
-                    cy="50"
-                    r="40"
-                    strokeDasharray={251.2}
-                    strokeDashoffset={251.2 - (251.2 * scoreResult.score) / 100}
-                    style={{ stroke: gradeInfo?.color }}
-                  />
-                </svg>
-                <div className="gauge-text-wrap">
-                  <span className="gauge-score-val">{scoreResult.score}</span>
-                  <span className="gauge-score-label">SKOR AKHIR</span>
-                </div>
-              </div>
-
-              <div className="grade-badge-wrap" style={{ background: `${gradeInfo?.color}15`, color: gradeInfo?.color }}>
-                <span>Predikat:</span>
-                <strong>{gradeInfo?.grade}</strong>
-              </div>
+        <div className="scoring-results-panel">
+          <div className="results-panel-header">
+            <div>
+              <h3 className="results-panel-title">Hasil Penilaian Esai</h3>
+              <p className="results-panel-desc">
+                Berhasil menilai {scoreResults.length} jawaban siswa berdasarkan kunci jawaban.
+              </p>
             </div>
+            <button className="btn-reset-scoring" onClick={handleReset}>
+              <ArrowLeft size={14} />
+              <span>Buat Penilaian Baru</span>
+            </button>
+          </div>
 
-            {/* Right Result Side: Summary & Details */}
-            <div className="score-details-side">
-              <h3 className="details-title">Hasil Evaluasi</h3>
-              <p className="grade-feedback-text">{gradeInfo?.text}</p>
+          {/* Vertical Accordion Stack */}
+          <div className="accordion-stack">
+            {scoreResults.map((result, index) => {
+              const isExpanded = expandedIndex === index;
+              const themeColor = getScoreColor(result.score);
+              const answerText = studentAnswers[index];
+              
+              return (
+                <div
+                  key={index}
+                  className={`accordion-item ${isExpanded ? "expanded" : ""}`}
+                  style={{ borderLeft: `4px solid ${themeColor}` }}
+                >
+                  {/* Accordion Header */}
+                  <div
+                    className="accordion-header"
+                    onClick={() => setExpandedIndex(isExpanded ? null : index)}
+                  >
+                    <div className="accordion-header-left">
+                      <span className="student-badge" style={{ background: `${themeColor}15`, color: themeColor }}>
+                        Siswa #{index + 1}
+                      </span>
+                      <span className="answer-text-preview">
+                        {shortPreview(answerText)}
+                      </span>
+                    </div>
 
-              {/* Warnings if is_short or is_blank */}
-              {scoreResult.features.is_short && (
-                <div className="warning-banner">
-                  <span>⚠️</span>
-                  <span><strong>Perhatian:</strong> Jawaban siswa terindikasi terlalu pendek dari referensi, hal ini dapat menurunkan kualitas penilaian.</span>
-                </div>
-              )}
-
-              <div className="metrics-grid">
-                <div className="metric-card">
-                  <div className="metric-header">
-                    <span className="metric-indicator-dot" style={{ background: "var(--primary)" }} />
-                    <span className="metric-name">Kemiripan Semantik (SBERT)</span>
+                    <div className="accordion-header-right">
+                      <div className="score-badge" style={{ color: themeColor }}>
+                        <span className="score-num-label">Nilai:</span>
+                        <strong className="score-num-val">{result.score}</strong>
+                      </div>
+                      <span className="chevron-icon">{isExpanded ? "▲" : "▼"}</span>
+                    </div>
                   </div>
-                  <div className="metric-val">{scoreResult.features.cosine_similarity}%</div>
-                  <div className="metric-desc">Kesesuaian makna dan pemahaman konsep secara keseluruhan.</div>
-                </div>
 
-                <div className="metric-card">
-                  <div className="metric-header">
-                    <span className="metric-indicator-dot" style={{ background: "var(--success)" }} />
-                    <span className="metric-name">Kesesuaian Kata Kunci</span>
-                  </div>
-                  <div className="metric-val">{scoreResult.features.keyword_overlap}%</div>
-                  <div className="metric-desc">Persentase kosakata kunci (kata bermakna) yang sepadan.</div>
-                </div>
+                  {/* Accordion Body (Expanded view) */}
+                  {isExpanded && (
+                    <div className="accordion-body">
+                      <div className="expanded-result-grid">
+                        {/* Gauge container */}
+                        <div className="expanded-gauge-column">
+                          <div className="gauge-outer-small">
+                            <svg className="gauge-svg" viewBox="0 0 100 100">
+                              <circle
+                                className="gauge-bg-circle"
+                                cx="50"
+                                cy="50"
+                                r="40"
+                              />
+                              <circle
+                                className="gauge-fill-circle"
+                                cx="50"
+                                cy="50"
+                                r="40"
+                                strokeDasharray={251.2}
+                                strokeDashoffset={251.2 - (251.2 * result.score) / 100}
+                                style={{ stroke: themeColor }}
+                              />
+                            </svg>
+                            <div className="gauge-text-wrap-small">
+                              <span className="gauge-score-val-small">{result.score}</span>
+                              <span className="gauge-score-label-small">NILAI</span>
+                            </div>
+                          </div>
+                        </div>
 
-                <div className="metric-card">
-                  <div className="metric-header">
-                    <span className="metric-indicator-dot" style={{ background: "var(--info)" }} />
-                    <span className="metric-name">Kesesuaian Struktur Kalimat</span>
-                  </div>
-                  <div className="metric-val">{scoreResult.features.sequence_similarity}%</div>
-                  <div className="metric-desc">Tingkat kecocokan sekuensial dan struktur penulisan kalimat.</div>
-                </div>
+                        {/* Details Grid */}
+                        <div className="expanded-details-column">
+                          {/* Student Answer Paragraph Preview */}
+                          <div className="student-full-text-preview">
+                            <strong>Jawaban yang dinilai:</strong>
+                            <p>{answerText}</p>
+                          </div>
 
-                <div className="metric-card">
-                  <div className="metric-header">
-                    <span className="metric-indicator-dot" style={{ background: "var(--text-dim)" }} />
-                    <span className="metric-name">Rasio Panjang Jawaban</span>
-                  </div>
-                  <div className="metric-val">{scoreResult.features.length_ratio}%</div>
-                  <div className="metric-desc">Rasio perbandingan jumlah kata siswa ({scoreResult.features.word_count_student} kata) vs kunci ({scoreResult.features.word_count_reference} kata).</div>
-                </div>
-              </div>
+                          {/* Warnings */}
+                          {result.features.is_short && (
+                            <div className="warning-banner" style={{ marginBottom: "1rem" }}>
+                              <span>⚠️</span>
+                              <span><strong>Peringatan:</strong> Jawaban siswa terlalu pendek. Rasio kata hanya {result.features.length_ratio}% dibandingkan kunci jawaban.</span>
+                            </div>
+                          )}
 
-              <div className="result-actions">
-                <button className="btn-reset-scoring" onClick={handleReset}>
-                  <ArrowLeft size={16} />
-                  <span>Nilai Jawaban Lain</span>
-                </button>
-              </div>
-            </div>
+                          <div className="metrics-grid">
+                            <div className="metric-card">
+                              <div className="metric-header">
+                                <span className="metric-indicator-dot" style={{ background: "var(--primary)" }} />
+                                <span className="metric-name">Kemiripan Semantik (SBERT)</span>
+                              </div>
+                              <div className="metric-val">{result.features.cosine_similarity}%</div>
+                              <div className="metric-desc">Kesesuaian makna dan penyampaian konsep.</div>
+                            </div>
+
+                            <div className="metric-card">
+                              <div className="metric-header">
+                                <span className="metric-indicator-dot" style={{ background: "var(--success)" }} />
+                                <span className="metric-name">Kesesuaian Kata Kunci</span>
+                              </div>
+                              <div className="metric-val">{result.features.keyword_overlap}%</div>
+                              <div className="metric-desc">Kesesuaian kosakata penting (non-stopwords).</div>
+                            </div>
+
+                            <div className="metric-card">
+                              <div className="metric-header">
+                                <span className="metric-indicator-dot" style={{ background: "var(--info)" }} />
+                                <span className="metric-name">Struktur Kalimat</span>
+                              </div>
+                              <div className="metric-val">{result.features.sequence_similarity}%</div>
+                              <div className="metric-desc">Kecocokan sekuensial penulisan teks.</div>
+                            </div>
+
+                            <div className="metric-card">
+                              <div className="metric-header">
+                                <span className="metric-indicator-dot" style={{ background: "var(--text-dim)" }} />
+                                <span className="metric-name">Panjang Jawaban</span>
+                              </div>
+                              <div className="metric-val">{result.features.length_ratio}%</div>
+                              <div className="metric-desc">Jumlah kata: {result.features.word_count_student} (kunci: {result.features.word_count_reference}).</div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         </div>
       )}

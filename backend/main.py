@@ -25,8 +25,9 @@ essay_scoring_service = EssayScoringService(sbert_model=plagiarism_service.model
 
 
 class EssayScoreRequest(BaseModel):
-    student_answer: str
+    question: Optional[str] = ""
     reference_answer: str
+    student_answers: List[str]
 
 
 MAX_FILE_SIZE = 20 * 1024 * 1024  # 20MB per file
@@ -64,15 +65,18 @@ async def score_essay(request: EssayScoreRequest):
 
     if not request.reference_answer.strip():
         raise HTTPException(status_code=400, detail="Kunci jawaban tidak boleh kosong")
-    if not request.student_answer.strip():
-        raise HTTPException(status_code=400, detail="Jawaban siswa tidak boleh kosong")
+    if not request.student_answers:
+        raise HTTPException(status_code=400, detail="Daftar jawaban siswa tidak boleh kosong")
 
     try:
-        result = essay_scoring_service.score_essay(
-            request.student_answer,
-            request.reference_answer
-        )
-        return result
+        results = []
+        for essay in request.student_answers:
+            res = essay_scoring_service.score_essay(
+                essay,
+                request.reference_answer
+            )
+            results.append(res)
+        return {"results": results}
     except Exception as e:
         logger.error(f"Essay scoring error: {e}")
         raise HTTPException(status_code=500, detail=f"Terjadi kesalahan saat menilai esai: {str(e)}")
