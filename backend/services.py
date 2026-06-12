@@ -16,34 +16,42 @@ import umap
 class TextExtractor:
     """Ekstrak teks dari berbagai format file"""
 
-    def extract(self, content: bytes, content_type: str) -> str:
+    def extract(self, content: bytes, content_type: str, preserve_newlines: bool = False) -> str:
         if content_type == "application/pdf":
-            return self._extract_pdf(content)
+            return self._extract_pdf(content, preserve_newlines)
         elif "wordprocessingml" in content_type:
-            return self._extract_docx(content)
+            return self._extract_docx(content, preserve_newlines)
         elif content_type == "text/plain":
-            return content.decode("utf-8", errors="ignore")
+            return self._clean_text(content.decode("utf-8", errors="ignore"), preserve_newlines)
         else:
             raise ValueError(f"Tipe file tidak didukung: {content_type}")
 
-    def _extract_pdf(self, content: bytes) -> str:
+    def _extract_pdf(self, content: bytes, preserve_newlines: bool = False) -> str:
         text = ""
         with pdfplumber.open(io.BytesIO(content)) as pdf:
             for page in pdf.pages:
                 extracted = page.extract_text()
                 if extracted:
                     text += extracted + "\n"
-        return self._clean_text(text)
+        return self._clean_text(text, preserve_newlines)
 
-    def _extract_docx(self, content: bytes) -> str:
+    def _extract_docx(self, content: bytes, preserve_newlines: bool = False) -> str:
         doc = docx.Document(io.BytesIO(content))
         text = "\n".join([para.text for para in doc.paragraphs])
-        return self._clean_text(text)
+        return self._clean_text(text, preserve_newlines)
 
-    def _clean_text(self, text: str) -> str:
-        text = re.sub(r'\s+', ' ', text)
-        text = text.strip()
-        return text
+    def _clean_text(self, text: str, preserve_newlines: bool = False) -> str:
+        if preserve_newlines:
+            lines = []
+            for line in text.splitlines():
+                cleaned = re.sub(r'[ \t]+', ' ', line).strip()
+                lines.append(cleaned)
+            return "\n".join(lines)
+        else:
+            text = re.sub(r'\s+', ' ', text)
+            text = text.strip()
+            return text
+
 
 
 class ModelASimilarity:
@@ -805,9 +813,18 @@ class EssayScoringService:
         current_section = None
         current_content = []
 
-        soal_pattern = re.compile(r'^(soal|pertanyaan|prompt)\s*:\s*(.*)$', re.IGNORECASE)
-        kunci_pattern = re.compile(r'^(kunci\s*jawaban|kunci|jawaban\s*referensi|reference\s*answer|reference)\s*:\s*(.*)$', re.IGNORECASE)
-        siswa_pattern = re.compile(r'^(jawaban\s*siswa\s*#?\d*|jawaban\s*#?\d*|siswa\s*#?\d*|student\s*answer\s*#?\d*)\s*:\s*(.*)$', re.IGNORECASE)
+        # Safe patterns with colon
+        soal_col = re.compile(r'^(soal|pertanyaan|prompt)\s*:\s*(.*)$', re.IGNORECASE)
+        kunci_col = re.compile(r'^(kunci\s*jawaban|kunci|jawaban\s*referensi|reference\s*answer|reference)\s*:\s*(.*)$', re.IGNORECASE)
+        siswa_col = re.compile(r'^(jawaban\s*siswa\s*#?\d+|jawaban\s*#?\d+|siswa\s*#?\d+|student\s*answer\s*#?\d+|mahasiswa\s*#?\d+|mahasiswa\s+\d+|siswa\s+\d+)\s*:\s*(.*)$', re.IGNORECASE)
+
+        # Safe patterns without colon (entire line matches)
+        soal_no_col = re.compile(r'^(soal\s*essay|soal|pertanyaan|prompt)$', re.IGNORECASE)
+        kunci_no_col = re.compile(r'^(kunci\s*jawaban|kunci|jawaban\s*referensi|reference\s*answer|reference)$', re.IGNORECASE)
+        siswa_no_col = re.compile(r'^(jawaban\s*siswa\s*#?\d+|jawaban\s*#?\d+|siswa\s*#?\d+|student\s*answer\s*#?\d+|mahasiswa\s*#?\d+|mahasiswa\s+\d+|siswa\s+\d+|mahasiswa|siswa|jawaban\s*siswa)$', re.IGNORECASE)
+
+        # Section introduction headers to ignore/skip
+        ignore_pattern = re.compile(r'^\d*\s*(daftar\s*)?jawaban\s*(mahasiswa|siswa|siswa-siswi)s?\s*$', re.IGNORECASE)
 
         for line in lines:
             line_strip = line.strip()
@@ -816,31 +833,57 @@ class EssayScoringService:
                     current_content.append(line)
                 continue
 
-            m_soal = soal_pattern.match(line_strip)
-            m_kunci = kunci_pattern.match(line_strip)
-            m_siswa = siswa_pattern.match(line_strip)
+            # Check ignore pattern first
+            if ignore_pattern.match(line_strip):
+                if current_section == 'soal':
+                    question = "\n".join(current_content).strip()
+                elif current_section == 'kunci':
+                    reference = "\n".join(current_content).strip()
+                elif current_section == 'siswa':
+                    students.append("\n".join(current_content).strip())
+                
+                current_section = None
+                current_content = []
+                continue
+
+            # Check with-colon matches first
+            m_soal = soal_col.match(line_strip)
+            m_kunci = kunci_col.match(line_strip)
+            m_siswa = siswa_col.match(line_strip)
+
+            is_header = False
+            next_section = None
+            next_content = []
 
             if m_soal:
-                if current_section == 'soal':
-                    question = "\n".join(current_content).strip()
-                elif current_section == 'kunci':
-                    reference = "\n".join(current_content).strip()
-                elif current_section == 'siswa':
-                    students.append("\n".join(current_content).strip())
-
-                current_section = 'soal'
-                current_content = [m_soal.group(2)]
+                is_header = True
+                next_section = 'soal'
+                next_content = [m_soal.group(2)]
             elif m_kunci:
-                if current_section == 'soal':
-                    question = "\n".join(current_content).strip()
-                elif current_section == 'kunci':
-                    reference = "\n".join(current_content).strip()
-                elif current_section == 'siswa':
-                    students.append("\n".join(current_content).strip())
-
-                current_section = 'kunci'
-                current_content = [m_kunci.group(2)]
+                is_header = True
+                next_section = 'kunci'
+                next_content = [m_kunci.group(2)]
             elif m_siswa:
+                is_header = True
+                next_section = 'siswa'
+                next_content = [m_siswa.group(2)]
+            else:
+                # Check without-colon matches
+                if soal_no_col.match(line_strip):
+                    is_header = True
+                    next_section = 'soal'
+                    next_content = []
+                elif kunci_no_col.match(line_strip):
+                    is_header = True
+                    next_section = 'kunci'
+                    next_content = []
+                elif siswa_no_col.match(line_strip):
+                    is_header = True
+                    next_section = 'siswa'
+                    next_content = []
+
+            if is_header:
+                # Save the current section's accumulated content
                 if current_section == 'soal':
                     question = "\n".join(current_content).strip()
                 elif current_section == 'kunci':
@@ -848,12 +891,13 @@ class EssayScoringService:
                 elif current_section == 'siswa':
                     students.append("\n".join(current_content).strip())
 
-                current_section = 'siswa'
-                current_content = [m_siswa.group(2)]
+                current_section = next_section
+                current_content = next_content
             else:
                 if current_section:
                     current_content.append(line)
                 else:
+                    # Default to soal if no section is active
                     current_section = 'soal'
                     current_content = [line]
 
@@ -866,7 +910,6 @@ class EssayScoringService:
             students.append("\n".join(current_content).strip())
 
         # Cleanup list
-        # Filter out any purely whitespace student answers from the list
         students = [s.strip() for s in students if s.strip()]
         if not students:
             students = [""]

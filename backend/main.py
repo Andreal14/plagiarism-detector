@@ -167,8 +167,8 @@ async def parse_essay_document(file: UploadFile = File(...)):
                 detail=f"File '{file.filename}' melebihi ukuran maksimal {MAX_FILE_SIZE // (1024 * 1024)}MB."
             )
 
-        # Gunakan extractor dari plagiarism_service
-        text = plagiarism_service.extractor.extract(content, file.content_type)
+        # Gunakan extractor dari plagiarism_service dengan mempertahankan newline
+        text = plagiarism_service.extractor.extract(content, file.content_type, preserve_newlines=True)
         if not text or not text.strip():
             raise HTTPException(
                 status_code=400,
