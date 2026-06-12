@@ -8,7 +8,7 @@ import "./ResultPage.css";
 
 const MODEL_LABELS = {
   model_a: { icon: Flask, name: "Surface Similarity (Model A · XGBoost)" },
-  model_b: { icon: Feather, name: "Stylometric Similarity (Model B · Stylometry)" },
+  model_b: { icon: Feather, name: "Semantic Similarity (Model B · SBERT + XGBoost)" },
   model_c: { icon: Sliders, name: "Custom Hybrid (Model C · Kustom)" },
 };
 

@@ -15,9 +15,9 @@ const MODELS = [
   {
     id: "model_b",
     icon: Feather,
-    name: "Stylometric Similarity",
-    desc: "Deteksi kesamaan gaya penulisan (panjang kalimat, tanda baca, kekayaan kosakata, kata tugas). Dilatih pada PAWS dengan XGBoost.",
-    badge: "Model B · Stylometry",
+    name: "Semantic Similarity",
+    desc: "Deteksi kesamaan makna/arti kalimat secara kontekstual menggunakan embedding SBERT (Sentence-BERT) dan pengklasifikasi XGBoost.",
+    badge: "Model B · SBERT + XGBoost",
   },
   {
     id: "model_c",
@@ -193,7 +193,7 @@ export default function UploadPage({ onResult, isAnalyzing, setIsAnalyzing }) {
                 className="weight-slider"
               />
               <div className="weight-display-right">
-                Model B (Stylometry): <strong>{100 - weightA}%</strong>
+                Model B (Semantic): <strong>{100 - weightA}%</strong>
               </div>
             </div>
           </div>

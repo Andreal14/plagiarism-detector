@@ -10,13 +10,13 @@ LearnWise PlagiScan adalah aplikasi deteksi plagiarisme dokumen berbasis web yan
    - Mendeteksi plagiarisme berbasis kemiripan permukaan dokumen menggunakan model klasifikasi XGBoost yang dilatih dengan **26 fitur leksikal**.
    - Fitur mencakup: TF-IDF (word & char n-gram) Cosine Similarity, Jaccard Similarity, Longest Common Subsequence (LCS), Levenshtein Edit Distance, token sort, word order score, shared unique word ratio, prefix matches, dan statistik panjang teks.
 
-2. **Stylometric Similarity (Model B - Analisis Gaya Penulisan):**
-   - Mendeteksi plagiarisme berbasis gaya penulisan menggunakan model klasifikasi XGBoost dengan **16 fitur stilometri**.
-   - Berguna untuk mendeteksi apakah suatu dokumen ditulis oleh orang yang sama atau ditulis ulang dengan gaya bahasa yang mirip.
-   - Fitur mencakup: Type-Token Ratio (TTR/kepadatan kosakata), rata-rata panjang kata & kalimat, frekuensi tanda baca (koma, titik, titik dua, tanda tanya), distribusi stopword bahasa Indonesia (`yang`, `dan`, `di`, `ke`, `dari`, `untuk`), serta rasio huruf besar dan angka.
+2. **Semantic Similarity (Model B - SBERT + XGBoost Classifier):**
+   - Mendeteksi plagiarisme berbasis kesamaan makna/arti kalimat secara kontekstual menggunakan model klasifikasi XGBoost yang dilatih pada **388 fitur komparatif embedding SBERT** (`paraphrase-multilingual-MiniLM-L12-v2`).
+   - Berguna untuk mendeteksi plagiarisme parafrasa tingkat tinggi di mana kata-kata diubah dengan sinonim tetapi maknanya tetap sama persis.
+   - Fitur mencakup: Cosine Similarity, Euclidean Distance, Manhattan Distance, Dot Product, dan selisih absolut dari 384 dimensi vektor embedding SBERT.
 
 3. **Custom Hybrid (Model C - Kombinasi Kustom):**
-   - Memungkinkan pengguna menggabungkan Model A (Surface) dan Model B (Stylometric) menggunakan **slider interaktif** di frontend untuk menentukan bobot persentase kontribusi masing-masing model (misalnya: 70% Model A dan 30% Model B).
+   - Memungkinkan pengguna menggabungkan Model A (Surface) dan Model B (Semantic) menggunakan **slider interaktif** di frontend untuk menentukan bobot persentase kontribusi masing-masing model (misalnya: 70% Model A dan 30% Model B).
 
 4. **Cek Kemiripan Berdampingan (Side-by-Side Comparison):**
    - Fitur analisis kalimat terperinci yang menampilkan kedua dokumen secara berdampingan dalam panel independen.
@@ -63,9 +63,9 @@ plagiarism-detector/
 │       │   ├── surface_char_vectorizer.pkl
 │       │   ├── surface_classifier.pkl
 │       │   └── surface_config.pkl
-│       └── stylometric_similarity/      # Artefak Model B
-│           ├── stylometric_classifier.pkl
-│           └── stylometric_config.pkl
+│       └── sbert_similarity/            # Artefak Model B Baru
+│           ├── sbert_classifier.pkl
+│           └── sbert_config.pkl
 ├── frontend/
 │   ├── index.html
 │   ├── package.json
@@ -91,7 +91,7 @@ plagiarism-detector/
 │           └── DocumentPlot.css
 ├── notebooks/                           # Dokumentasi & Log Pelatihan Model
 │   ├── surface_similarity_training.ipynb      # Notebook training Model A (Surface)
-│   ├── stylometric_similarity_training.ipynb  # Notebook training Model B (Stylometric)
+│   ├── sbert_similarity_training.ipynb        # Notebook training Model B (SBERT Semantic)
 │   ├── archive/                         # Versi notebook Model A lama (ver1 - ver7)
 │   ├── plots/                           # Grafik visualisasi hasil training (ROC, Confusion Matrix, dll.)
 │   └── src/                             # Script pelatihan Python standalone

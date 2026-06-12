@@ -354,17 +354,18 @@ class ModelASimilarity:
 
 class ModelBSimilarity:
     """
-    Deteksi kemiripan menggunakan pipeline Model B (Stylometric Similarity)
-    dari notebook Model B ver1.ipynb.
+    Deteksi kemiripan menggunakan pipeline Model B (Semantic Similarity via SBERT + XGBoost)
+    dari notebook sbert_similarity_training.ipynb.
 
-    Membutuhkan file-file berikut di folder 'model_artifacts/':
-        - xgboost_classifier_b.pkl
-        - pipeline_config_b.pkl
+    Membutuhkan file-file berikut di folder 'model_artifacts/sbert_similarity/':
+        - sbert_classifier.pkl
+        - sbert_config.pkl
     """
 
     ARTIFACTS_PATH = "model_artifacts"
 
-    def __init__(self):
+    def __init__(self, sbert_model=None):
+        self._sbert_model = sbert_model
         self._clf = None
         self._config = None
         self._loaded = False
@@ -377,15 +378,23 @@ class ModelBSimilarity:
             import joblib
             import os
 
-            clf_path    = os.path.join(self.ARTIFACTS_PATH, "stylometric_similarity", "stylometric_classifier.pkl")
-            config_path = os.path.join(self.ARTIFACTS_PATH, "stylometric_similarity", "stylometric_config.pkl")
+            clf_path    = os.path.join(self.ARTIFACTS_PATH, "sbert_similarity", "sbert_classifier.pkl")
+            config_path = os.path.join(self.ARTIFACTS_PATH, "sbert_similarity", "sbert_config.pkl")
+
+            # Fallback path if run from backend folder directly
+            if not os.path.exists(clf_path) or not os.path.exists(config_path):
+                alt_clf_path = os.path.join("backend", "model_artifacts", "sbert_similarity", "sbert_classifier.pkl")
+                alt_config_path = os.path.join("backend", "model_artifacts", "sbert_similarity", "sbert_config.pkl")
+                if os.path.exists(alt_clf_path) and os.path.exists(alt_config_path):
+                    clf_path = alt_clf_path
+                    config_path = alt_config_path
 
             missing = [p for p in [clf_path, config_path] if not os.path.exists(p)]
             if missing:
                 self._load_error = (
                     f"File model_artifacts b tidak ditemukan: {missing}. "
-                    "Pastikan model hasil training Model B (stylometric_similarity) sudah disalin "
-                    "ke dalam folder backend/model_artifacts/stylometric_similarity/."
+                    "Pastikan model hasil training Model B (sbert_similarity) sudah disalin "
+                    "ke dalam folder backend/model_artifacts/sbert_similarity/."
                 )
                 print(f"[ModelB] WARNING: {self._load_error}")
                 return
@@ -394,7 +403,7 @@ class ModelBSimilarity:
             self._config     = joblib.load(config_path)
             self._threshold  = self._config.get("threshold_optimal", 0.5)
             self._loaded = True
-            print(f"[ModelB] Pipeline loaded. Threshold optimal: {self._threshold:.4f}")
+            print(f"[ModelB - SBERT] Pipeline loaded. Threshold optimal: {self._threshold:.4f}")
 
         except Exception as e:
             self._load_error = str(e)
@@ -402,73 +411,40 @@ class ModelBSimilarity:
 
     @property
     def is_available(self) -> bool:
-        return self._loaded
+        return self._loaded and self._sbert_model is not None
 
-    def _get_stylometry_vector(self, text: str) -> np.ndarray:
-        text_str = str(text)
-        words = text_str.split()
-        total_words = len(words)
-        total_chars = len(text_str)
-        
-        if total_words == 0:
-            return np.zeros(16)
-            
-        avg_word_len = sum(len(w) for w in words) / total_words
-        
-        # Split sentences by . ! or ?
-        sentences = re.split(r'[.!?]+', text_str)
-        sentences = [s.strip() for s in sentences if s.strip()]
-        avg_sent_len = total_words / max(len(sentences), 1)
-        
-        unique_words = len(set(w.lower() for w in words))
-        ttr = unique_words / total_words
-        
-        comma_freq = text_str.count(',') / max(total_chars, 1)
-        period_freq = text_str.count('.') / max(total_chars, 1)
-        colon_freq = text_str.count(':') / max(total_chars, 1)
-        dash_freq = (text_str.count('-') + text_str.count('_')) / max(total_chars, 1)
-        question_freq = text_str.count('?') / max(total_chars, 1)
-        
-        text_lower = text_str.lower()
-        stopword_yang = text_lower.count('yang') / total_words
-        stopword_dan = text_lower.count('dan') / total_words
-        stopword_di = text_lower.count('di') / total_words
-        stopword_ke = text_lower.count('ke') / total_words
-        stopword_dari = text_lower.count('dari') / total_words
-        stopword_untuk = text_lower.count('untuk') / total_words
-        
-        uppercase_ratio = sum(1 for c in text_str if c.isupper()) / max(total_chars, 1)
-        digit_ratio = sum(1 for c in text_str if c.isdigit()) / max(total_chars, 1)
-        
-        return np.array([
-            avg_word_len, avg_sent_len, ttr,
-            comma_freq, period_freq, colon_freq, dash_freq, question_freq,
-            stopword_yang, stopword_dan, stopword_di, stopword_ke, stopword_dari, stopword_untuk,
-            uppercase_ratio, digit_ratio
-        ])
+    def _extract_features(self, s1_clean: str, s2_clean: str) -> np.ndarray:
+        """Ekstrak 388 fitur SBERT komparatif."""
+        # Encode sentences to SBERT embeddings (384 dim)
+        u = self._sbert_model.encode([s1_clean], convert_to_numpy=True)[0]
+        v = self._sbert_model.encode([s2_clean], convert_to_numpy=True)[0]
 
-    def _extract_features(self, s1: str, s2: str) -> np.ndarray:
-        v1 = self._get_stylometry_vector(s1)
-        v2 = self._get_stylometry_vector(s2)
-        
-        diff = np.abs(v1 - v2)
-        mean = (v1 + v2) / 2.0
-        
-        norm_v1 = np.linalg.norm(v1)
-        norm_v2 = np.linalg.norm(v2)
-        if norm_v1 > 0 and norm_v2 > 0:
-            cosine = np.dot(v1, v2) / (norm_v1 * norm_v2)
-        else:
-            cosine = 0.0
-            
-        corr = np.corrcoef(v1, v2)[0, 1] if norm_v1 > 0 and norm_v2 > 0 else 0.0
-        if np.isnan(corr):
-            corr = 0.0
-            
-        return np.array([np.hstack([diff, mean, [cosine, corr]])], dtype=np.float32)
+        # 1. Cosine similarity
+        norm_u = np.linalg.norm(u)
+        norm_v = np.linalg.norm(v)
+        cosine = float(np.dot(u, v) / (norm_u * norm_v)) if norm_u > 0 and norm_v > 0 else 0.0
+
+        # 2. Euclidean distance
+        euclidean = float(np.linalg.norm(u - v))
+
+        # 3. Manhattan distance
+        manhattan = float(np.sum(np.abs(u - v)))
+
+        # 4. Dot product
+        dot = float(np.dot(u, v))
+
+        # 5. Absolute difference (384 features)
+        abs_diff = np.abs(u - v)
+
+        # Combine them
+        feat_vec = np.hstack([[cosine, euclidean, manhattan, dot], abs_diff])
+        return np.array([feat_vec], dtype=np.float32)
 
     def similarity(self, text_a: str, text_b: str) -> float:
-        feats = self._extract_features(text_a, text_b)
+        s1 = text_a.strip().lower()
+        s2 = text_b.strip().lower()
+        
+        feats = self._extract_features(s1, s2)
         prob  = float(self._clf.predict_proba(feats)[0][1])
         return prob
 
@@ -480,6 +456,7 @@ class ModelBSimilarity:
             matrix[i][j] = sim
             matrix[j][i] = sim
         return matrix
+
 
 
 class NGramSimilarity:
@@ -527,7 +504,7 @@ class PlagiarismService:
         self.extractor = TextExtractor()
         self.ngram = NGramSimilarity(n=3)
         self.model_a = ModelASimilarity()
-        self.model_b = ModelBSimilarity()
+        self.model_b = ModelBSimilarity(sbert_model=self.model)
 
         if self.model_a.is_available:
             print("Model A (XGBoost pipeline) loaded successfully!")
@@ -536,7 +513,7 @@ class PlagiarismService:
             print("Model 'model_a' akan fallback ke NGram jika dipilih.")
 
         if self.model_b.is_available:
-            print("Model B (Stylometry pipeline) loaded successfully!")
+            print("Model B (SBERT Semantic pipeline) loaded successfully!")
         else:
             print(f"Model B tidak tersedia: {self.model_b._load_error}")
             print("Model 'model_b' akan fallback ke NGram jika dipilih.")

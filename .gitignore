@@ -62,3 +62,6 @@ venv.bak/
 # OS metadata
 .DS_Store
 Thumbs.db
+
+# SBERT cache
+notebooks/sbert_embeddings_cache.pkl
