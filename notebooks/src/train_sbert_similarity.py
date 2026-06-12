@@ -26,26 +26,15 @@ if __name__ == '__main__':
 
     def load_paws(split_name):
         url = BASE_URL + split_name
-        print(f"  Mengunduh dan merestrukturisasi {split_name} ...")
+        print(f"  Mengunduh {split_name} ...")
         with urllib.request.urlopen(url) as response:
             content = response.read().decode('utf-8')
         df = pd.read_csv(io.StringIO(content), sep='\t')
         if 'label' in df.columns:
             df['label'] = pd.to_numeric(df['label'], errors='coerce').fillna(-1).astype(int)
         df = df[df['label'].isin([0, 1])].reset_index(drop=True)
-        
-        # Pisahkan label 0 dan 1
-        df_pos = df[df['label'] == 1].copy()
-        df_neg = df[df['label'] == 0].copy()
-        
-        # Shuffle sentence2 untuk label 0 agar topiknya berbeda secara acak
-        if len(df_neg) > 1:
-            np.random.seed(42)
-            shuffled_s2 = df_neg['sentence2'].sample(frac=1, random_state=42).reset_index(drop=True)
-            df_neg['sentence2'] = shuffled_s2.values
-            
-        df_restructured = pd.concat([df_pos, df_neg], ignore_index=True)
-        return df_restructured[['sentence1', 'sentence2', 'label']]
+        return df[['sentence1', 'sentence2', 'label']]
+
 
 
     print("Mengunduh dataset PAWS-Indonesia...")
