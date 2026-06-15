@@ -924,122 +924,99 @@ class EssayScoringService:
 class AIDetectionService:
     """
     Service to classify whether text is AI-generated (ChatGPT) or Human-written.
-    Uses TF-IDF Word & Char vectorizer along with stylometric features and XGBoost.
+    Uses Keras Multi-Input Neural Network (best_model.keras) and DetectorPipeline.
     """
     ARTIFACTS_PATH = "model_artifacts"
 
-    def __init__(self):
-        self._word_vec = None
-        self._char_vec = None
-        self._clf = None
-        self._config = None
+    def __init__(self, sbert_model=None):
+        self._pipeline = None
+        self._keras_model = None
         self._loaded = False
         self._load_error = None
+        self._sbert_model = sbert_model
+        self._threshold = 0.5  # default threshold
         self._try_load()
 
     def _try_load(self):
         try:
-            import joblib
             import os
+            import pickle
+            import json
+            import threading
 
-            word_path = os.path.join(self.ARTIFACTS_PATH, "ai_detection", "ai_word_vectorizer.pkl")
-            char_path = os.path.join(self.ARTIFACTS_PATH, "ai_detection", "ai_char_vectorizer.pkl")
-            clf_path = os.path.join(self.ARTIFACTS_PATH, "ai_detection", "ai_classifier.pkl")
-            config_path = os.path.join(self.ARTIFACTS_PATH, "ai_detection", "ai_config.pkl")
+            keras_path = os.path.join(self.ARTIFACTS_PATH, "ai_detection", "best_model.keras")
 
-            missing = [p for p in [word_path, char_path, clf_path, config_path] if not os.path.exists(p)]
-            if missing:
-                self._load_error = f"Missing model files: {missing}"
+            # Fallback path if run from backend folder directly
+            if not os.path.exists(keras_path):
+                alt_keras_path = os.path.join("backend", "model_artifacts", "ai_detection", "best_model.keras")
+                if os.path.exists(alt_keras_path):
+                    keras_path = alt_keras_path
+
+            if not os.path.exists(keras_path):
+                self._load_error = f"Model Keras tidak ditemukan di: {keras_path}"
                 print(f"[AIDetection] WARNING: {self._load_error}")
                 return
 
-            self._word_vec = joblib.load(word_path)
-            self._char_vec = joblib.load(char_path)
-            self._clf = joblib.load(clf_path)
-            self._config = joblib.load(config_path)
-            self._threshold = self._config.get("threshold_optimal", 0.5)
-            self._loaded = True
-            print(f"[AIDetection] Model loaded. Accuracy: {self._config.get('accuracy', 0.0):.4f}, Threshold: {self._threshold:.4f}")
+            def load_bg():
+                try:
+                    print("[AIDetection] Loading Keras model in background...")
+                    import tensorflow as tf
+                    from detector_pipeline import DetectorPipeline
+
+                    # Initialize pipeline (forces use of CPU or GPU based on parameter)
+                    pipeline = DetectorPipeline(use_gpu=False)
+                    
+                    # Share SBERT model to save RAM and avoid double init
+                    if self._sbert_model is not None:
+                        pipeline.embedding_model = self._sbert_model
+                        print("[AIDetection] Shared SBERT model successfully.")
+
+                      # Load Keras model
+                    keras_model = tf.keras.models.load_model(keras_path)
+                    
+                    self._pipeline = pipeline
+                    self._keras_model = keras_model
+                    self._loaded = True
+                    print("[AIDetection] Keras Model and Pipeline loaded successfully!")
+                except Exception as e:
+                    self._load_error = str(e)
+                    print(f"[AIDetection] ERROR loading Keras model: {e}")
+
+            threading.Thread(target=load_bg, daemon=True).start()
+
         except Exception as e:
             self._load_error = str(e)
-            print(f"[AIDetection] ERROR loading model: {e}")
+            print(f"[AIDetection] ERROR in _try_load: {e}")
 
     @property
     def is_available(self) -> bool:
         return self._loaded
 
-    def _preprocess(self, text: str) -> str:
-        text = str(text).lower()
-        text = re.sub(r'[^\w\s]', ' ', text)
-        text = re.sub(r'\s+', ' ', text).strip()
-        return text
-
-    def _extract_stylometry(self, text: str) -> np.ndarray:
-        text_str = str(text)
-        text_lower = text_str.lower()
-        words = text_str.split()
-        total_words = len(words)
-        total_chars = len(text_str)
-
-        markers = self._config.get("chatgpt_markers", []) if self._config else []
-
-        if total_words == 0:
-            return np.zeros(len(markers) + 7)
-
-        # 1. Lexical Diversity (Type-Token Ratio)
-        unique_words = len(set(w.lower() for w in words))
-        ttr = unique_words / total_words
-
-        # 2. Word Length Stats
-        word_lengths = [len(w) for w in words]
-        avg_word_len = sum(word_lengths) / total_words
-
-        # 3. Sentence Length Stats
-        sentences = re.split(r'[.!?]+', text_str)
-        sentences = [s.strip() for s in sentences if s.strip()]
-        num_sentences = max(len(sentences), 1)
-        avg_sent_len = total_words / num_sentences
-
-        # 4. Punctuation rates
-        comma_rate = text_str.count(',') / max(total_chars, 1)
-        period_rate = text_str.count('.') / max(total_chars, 1)
-        question_rate = text_str.count('?') / max(total_chars, 1)
-
-        # 5. Capital letters rate
-        cap_rate = sum(1 for c in text_str if c.isupper()) / max(total_chars, 1)
-
-        # 6. ChatGPT transition word markers
-        marker_features = []
-        for marker in markers:
-            count = len(re.findall(marker, text_lower))
-            marker_features.append(count / total_words)
-
-        return np.array([
-            ttr, avg_word_len, avg_sent_len, comma_rate, period_rate, question_rate, cap_rate
-        ] + marker_features)
-
     def detect(self, text: str) -> dict:
         if not self._loaded:
-            raise ValueError(f"AI Detection model is not loaded: {self._load_error}")
+            if self._load_error:
+                raise ValueError(f"Model Deteksi AI tidak tersedia: {self._load_error}")
+            raise ValueError("Model Deteksi AI sedang dimuat, silakan coba beberapa saat lagi.")
 
-        word_count = len(str(text).split())
-        char_count = len(str(text))
+        input_text = text.strip()
+        word_count = len(input_text.split())
+        char_count = len(input_text)
 
-        # Extract features
-        cleaned = self._preprocess(text)
-        X_word = self._word_vec.transform([cleaned]).toarray()
-        X_char = self._char_vec.transform([cleaned]).toarray()
-        sty = self._extract_stylometry(text) # Use original text for sentence splits
+        # Extract features using the pipeline
+        processed = self._pipeline.process_text(input_text)
+        x_struct = processed["x_struct"]
+        x_embed = processed["x_embed"]
 
-        # Combine
-        X_combined = np.hstack([X_word, X_char, [sty]])
+        # Run scale normalization if scaler is loaded
+        if self._pipeline.scaler is not None:
+            x_struct = self._pipeline.scaler.transform(x_struct)
 
-        # Predict
-        prob = float(self._clf.predict_proba(X_combined)[0][1])
+        # Keras model prediction
+        prob = float(self._keras_model.predict([x_struct, x_embed], verbose=0)[0][0])
         is_ai = bool(prob >= self._threshold)
 
-        # Prepare metrics breakdown
-        transition_word_rate = sum(sty[7:]) # Sum of all transition word rates
+        # Get structural metrics breakdown
+        features = processed["features_dict"]
 
         return {
             "is_ai": is_ai,
@@ -1047,11 +1024,20 @@ class AIDetectionService:
             "word_count": word_count,
             "char_count": char_count,
             "metrics": {
-                "lexical_diversity_ttr": round(float(sty[0]), 4),
-                "avg_word_length": round(float(sty[1]), 2),
-                "avg_sentence_length": round(float(sty[2]), 2),
-                "punctuation_rate": round(float(sty[3] + sty[4] + sty[5]) * 1000, 2), # commas + periods + questions rate per 1000 chars
-                "transition_word_rate": round(float(transition_word_rate) * 100, 2) # percent of words
+                "lexical_diversity_ttr": round(float(features.get("unique_word_ratio", 0)), 4),
+                "avg_word_length": round(float(features.get("avg_word_length", 0)), 2),
+                "avg_sentence_length": round(float(features.get("avg_sentence_length", 0)), 2),
+                "punctuation_rate": round(
+                    float(
+                        features.get("comma_density", 0)
+                        + features.get("colon_density", 0)
+                        + features.get("semicolon_density", 0)
+                    ),
+                    2,
+                ),
+                "transition_word_rate": round(
+                    float(features.get("transition_density", 0)) * 100, 2
+                ),
             }
         }
 

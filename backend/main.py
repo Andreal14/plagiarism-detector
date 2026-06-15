@@ -22,7 +22,8 @@ app.add_middleware(
 
 plagiarism_service = PlagiarismService()
 essay_scoring_service = EssayScoringService(sbert_model=plagiarism_service.model)
-ai_detection_service = AIDetectionService()
+ai_detection_service = AIDetectionService(sbert_model=plagiarism_service.model)
+
 
 
 class EssayScoreRequest(BaseModel):
