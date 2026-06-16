@@ -1,0 +1,17 @@
+[
+    {
+        "name": "gpt_artifact",
+        "regex": "as an ai language model",
+        "severity": "high"
+    },
+    {
+        "name": "anthropic_artifact",
+        "regex": "i do not have personal feelings",
+        "severity": "high"
+    },
+    {
+        "name": "openai_artifact",
+        "regex": "openai",
+        "severity": "moderate"
+    }
+]

@@ -1,0 +1,46 @@
+{
+    "en": [
+        {
+            "formal": "furthermore",
+            "informal": "also"
+        },
+        {
+            "formal": "nevertheless",
+            "informal": "but"
+        },
+        {
+            "formal": "subsequently",
+            "informal": "later"
+        },
+        {
+            "formal": "consequently",
+            "informal": "so"
+        },
+        {
+            "formal": "demonstrate",
+            "informal": "show"
+        }
+    ],
+    "id": [
+        {
+            "formal": "oleh karena itu",
+            "informal": "makanya"
+        },
+        {
+            "formal": "namun",
+            "informal": "tapi"
+        },
+        {
+            "formal": "kemudian",
+            "informal": "lalu"
+        },
+        {
+            "formal": "karena",
+            "informal": "soalnya"
+        },
+        {
+            "formal": "menunjukkan",
+            "informal": "kasih lihat"
+        }
+    ]
+}

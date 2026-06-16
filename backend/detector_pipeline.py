@@ -87,14 +87,18 @@ class DetectorPipeline:
                 print(f"Warning: Gagal membaca {FEATURE_CONFIG_FILE}. Menggunakan ACTIVE_FEATURES_23. Error: {e}")
 
     def _load_scaler(self):
-        if os.path.exists(SCALER_FILE):
+        path = SCALER_FILE
+        if not os.path.exists(path):
+            path = os.path.join(os.path.dirname(__file__), "model_artifacts", "ai_detection", SCALER_FILE)
+            
+        if os.path.exists(path):
             try:
-                with open(SCALER_FILE, "rb") as f:
+                with open(path, "rb") as f:
                     self.scaler = pickle.load(f)
-                print(f"[Pipeline] StandardScaler dimuat dari {SCALER_FILE} "
+                print(f"[Pipeline] StandardScaler dimuat dari {path} "
                       f"(n_features={self.scaler.n_features_in_})")
             except Exception as e:
-                print(f"[Pipeline] Warning: Gagal memuat scaler dari {SCALER_FILE}. "
+                print(f"[Pipeline] Warning: Gagal memuat scaler dari {path}. "
                       f"Prediksi akan tidak akurat! Error: {e}")
         else:
             print(f"[Pipeline] Warning: {SCALER_FILE} tidak ditemukan. "
@@ -120,6 +124,8 @@ class DetectorPipeline:
     def _load_wordlists(self):
         wl = {}
         p  = Path(WORDLIST_DIR)
+        if not p.exists():
+            p = Path(os.path.dirname(__file__)) / WORDLIST_DIR
 
         try:
             with open(p / "ai_overrepresented_vocab.json", encoding="utf-8") as f: d = json.load(f)
@@ -184,18 +190,20 @@ class DetectorPipeline:
             print(f"Warning: Gagal memuat sebagian wordlists. Error: {e}")
 
     def _load_embedding_model(self):
+        if self.embedding_model is not None:
+            print("[Pipeline] Embedding model already shared/set. Skipping load.")
+            return
         try:
             from sentence_transformers import SentenceTransformer
-            # Ganti L12 → L6 untuk hemat RAM (~120MB vs ~500MB)
             self.embedding_model = SentenceTransformer(
-                'paraphrase-multilingual-MiniLM-L6-v2',
+                'paraphrase-multilingual-MiniLM-L12-v2',
                 device=self.device
             )
             test_vec  = self.embedding_model.encode(
                 ["test"], convert_to_numpy=True, normalize_embeddings=True
             )
             test_norm = float(np.linalg.norm(test_vec[0]))
-            print(f"[Pipeline] MiniLM-L6 dimuat. L2 norm test: {test_norm:.4f} (harus ≈ 1.0)")
+            print(f"[Pipeline] MiniLM-L12 dimuat. L2 norm test: {test_norm:.4f} (harus ~ 1.0)")
         except Exception as e:
             print(f"[Pipeline] Warning: Gagal memuat SentenceTransformer. Error: {e}")
 

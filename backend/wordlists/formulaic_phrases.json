@@ -1,0 +1,35 @@
+{
+    "en": {
+        "conclusion": [
+            "in conclusion",
+            "to summarize",
+            "overall",
+            "in summary",
+            "all in all",
+            "to conclude"
+        ],
+        "emphasis": [
+            "first and foremost",
+            "it is worth noting",
+            "it is important to highlight",
+            "clearly",
+            "obviously"
+        ]
+    },
+    "id": {
+        "conclusion": [
+            "kesimpulannya",
+            "sebagai kesimpulan",
+            "secara keseluruhan",
+            "singkatnya",
+            "akhir kata"
+        ],
+        "emphasis": [
+            "perlu dicatat",
+            "penting untuk diingat",
+            "pertama-tama",
+            "jelas sekali",
+            "khususnya"
+        ]
+    }
+}

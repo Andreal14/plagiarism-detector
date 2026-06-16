@@ -1,0 +1,57 @@
+{
+    "en": {
+        "addition": [
+            "moreover",
+            "furthermore",
+            "in addition",
+            "besides",
+            "additionally",
+            "likewise",
+            "similarly"
+        ],
+        "contrast": [
+            "however",
+            "nevertheless",
+            "nonetheless",
+            "on the other hand",
+            "conversely",
+            "yet",
+            "instead"
+        ],
+        "cause": [
+            "therefore",
+            "consequently",
+            "thus",
+            "hence",
+            "as a result",
+            "accordingly",
+            "because of"
+        ]
+    },
+    "id": {
+        "addition": [
+            "selain itu",
+            "disamping itu",
+            "lagipula",
+            "tambahan pula",
+            "demikian pula",
+            "begitu juga"
+        ],
+        "contrast": [
+            "namun",
+            "akan tetapi",
+            "di sisi lain",
+            "sebaliknya",
+            "meskipun demikian",
+            "tetapi"
+        ],
+        "cause": [
+            "oleh karena itu",
+            "maka dari itu",
+            "dengan demikian",
+            "akibatnya",
+            "sehingga",
+            "karena itu"
+        ]
+    }
+}
